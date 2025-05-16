@@ -17,6 +17,7 @@ PCにはUSBポートがありますが、このUSBポートからシリアルや
 ## ドライバーの入手とインストール  
   CH341SER  
 　入手先：https://www.wch-ic.com/downloads/ch341ser_exe.html
+ ![サンプル画像](images/ch341T.png)　　
 
 ## pythonモジュール i2cpy と接続されているI2Cデバイスの列挙  
 
