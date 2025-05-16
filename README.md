@@ -8,22 +8,21 @@ PCにはUSBポートがありますが、このUSBポートからシリアルや
 (2)OLEDディスプレイSSD1306へ文字表示
 (3)PCA9685でサーボモータを駆動
 
-利用したパーツとテストした機能
+## 利用したパーツとテストした機能
 (0)　CH341T USBからI2Cへ変換
 (1)AHT20で温度、湿度のデータを取得
 (2)OLEDディスプレイSSD1306へ文字表示
 (3)PCA9685でサーボモータを駆動
 
-ドライバーの入手とインストール
+## ドライバーの入手とインストール
   CH341SER
 　入手先：https://www.wch-ic.com/downloads/ch341ser_exe.html
 
-pythonモジュール i2cpy と接続されているI2Cデバイスの列挙
+## pythonモジュール i2cpy と接続されているI2Cデバイスの列挙
 
-----------------
 from i2cpy import I2C
 i2c = I2C(driver="ch341")
 devices = i2c.scan()  # I2Cバス上のデバイスをスキャン
 print("検出されたI2Cデバイスアドレス:", [hex(addr) for addr in devices])
-----------------
+
  
