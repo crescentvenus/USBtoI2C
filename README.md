@@ -13,7 +13,7 @@ PCにはUSBポートがありますが、このUSBポートからシリアルや
 (1)AHT20で温度、湿度のデータを取得
 (2)OLEDディスプレイSSD1306へ文字表示
 (3)PCA9685でサーボモータを駆動
-
+##
 ## ドライバーの入手とインストール
   CH341SER
 　入手先：https://www.wch-ic.com/downloads/ch341ser_exe.html
