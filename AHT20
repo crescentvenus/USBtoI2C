@@ -1,0 +1,49 @@
+from i2cpy import I2C
+import time
+
+# CH341Aを介してI2Cバスを初期化
+i2c = I2C(driver="ch341")  # CH341ドライバーを明示的に指定
+
+# AHT20のI2Cアドレス
+AHT20_ADDR = 0x38
+
+# AHT20コマンド
+INIT_CMD = bytes([0xBE, 0x08, 0x00])  # 初期化コマンド
+TRIGGER_MEASUREMENT = bytes([0xAC, 0x33, 0x00])  # 測定開始コマンド
+
+def init_aht20():
+    """AHT20センサーを初期化"""
+    i2c.writeto(AHT20_ADDR, INIT_CMD)
+    time.sleep(0.1)  # 初期化のための待機時間
+
+def read_aht20():
+    """AHT20から温度と湿度を読み取る"""
+    # 測定開始コマンドを送信
+    i2c.writeto(AHT20_ADDR, TRIGGER_MEASUREMENT)
+    time.sleep(0.08)  # 測定完了を待つ
+    
+    # 6バイトのデータを読み取る（ステータス、湿度、温度）
+    data = i2c.readfrom(AHT20_ADDR, 6)
+    
+    # 湿度データの計算
+    humidity_raw = ((data[1] << 12) | (data[2] << 4) | (data[3] >> 4)) & 0xFFFFF
+    humidity = (humidity_raw * 100.0) / 0x100000
+    
+    # 温度データの計算
+    temp_raw = ((data[3] & 0x0F) << 16) | (data[4] << 8) | data[5]
+    temperature = ((temp_raw * 200.0) / 0x100000) - 50.0
+    
+    return humidity, temperature
+
+# センサーの初期化
+init_aht20()
+
+# データを読み取って表示
+try:
+    while True:
+        humidity, temperature = read_aht20()
+        print(f"湿度: {humidity:.2f}%")
+        print(f"温度: {temperature:.2f}°C")
+        time.sleep(2)  # 2秒ごとに読み取り
+except KeyboardInterrupt:
+    print("プログラムを終了します")
