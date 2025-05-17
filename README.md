@@ -27,3 +27,6 @@ from i2cpy import I2C
 i2c = I2C(driver="ch341")  
 devices = i2c.scan()  # I2Cバス上のデバイスをスキャン  
 print("検出されたI2Cデバイスアドレス:", [hex(addr) for addr in devices])  
+
+## AHT20/BMP280で取得した温度、湿度、気圧データを日時を含めてSSD1306での表示例  
+![PICT](images/SSD1306_AHT20.jpg)   
