@@ -30,4 +30,7 @@ print("検出されたI2Cデバイスアドレス:", [hex(addr) for addr in devi
 
 ## AHT20/BMP280で取得した温度、湿度、気圧データを日時を含めてSSD1306での表示例  
 ![PICT](images/SSD1306_AHT20.jpg)   
-pythonコード:　ATH20_SSD1306
+pythonコード:　AHT20_SSD1306
+
+## Known issue  
+CH341経由のオーバーヘッドがどの程度I2Cの速度に与えるかについては未確認です。  
