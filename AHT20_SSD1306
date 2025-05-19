@@ -250,8 +250,9 @@ def read_aht20(i2c: I2C, address: int = AHT20_ADDRESS, trigger: bytes = AHT20_TR
     """AHT20から湿度と温度を読み取る"""
     i2c_write(i2c, address, trigger, "AHT20 trigger")
     time.sleep(0.08)
-    data = i2c_read(i2c, address, 0, 6, "AHT20 data")
-    humidity_raw = ((data[1] << 12) | (data[2] << 4) | (data[3] >> 4))
+    data = i2c.readfrom(address, 6)
+    humidity_raw = ((data[1] << 12) | (data[2] << 4) | (data[3] >> 4)) & 0xFFFFF
+    humidity = round((humidity_raw * 100.0) / 0x100000,1)
     temp_raw = ((data[3] & 0x0F) << 16) | (data[4] << 8) | data[5]
     return (humidity_raw * 100.0 / 2**20), ((temp_raw * 200.0 / 2**20) - 50.0)
 
