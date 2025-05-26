@@ -32,6 +32,8 @@ SH1106_INIT_COMMANDS = [
     0xAF        # Display ON
 ]
 
+_sh1106_font_cache = {}
+
 class SH1106Display:
     def __init__(self, i2c_freq=20000):
         self.i2c = I2C(driver="ch341", freq=i2c_freq)
@@ -43,8 +45,8 @@ class SH1106Display:
         for cmd in SH1106_INIT_COMMANDS:
             #print(f"Sending command: 0x{cmd:02X}")
             self.i2c.writeto(SH1106_ADDR, bytes([SH1106_COMMAND, cmd]))
-            time.sleep(0.01)
-        time.sleep(0.5)
+            # time.sleep(0.01) # Removed sleep from inside the loop
+        time.sleep(0.1) # Ensured a single 0.1s sleep after all commands
     
     def clear_display(self):
         """ディスプレイをクリア"""
@@ -67,13 +69,29 @@ class SH1106Display:
         if 0 <= x < DISPLAY_WIDTH and 0 <= y < DISPLAY_HEIGHT:
             self.buffer[y][x] = 1 if value else 0
     
-    def draw_bitmap(self, bitmap, x_offset=0, y_offset=0):
-        """ビットマップをバッファに描画"""
-        height, width = len(bitmap), len(bitmap[0])
-        for y in range(height):
-            for x in range(width):
-                if bitmap[y][x]:
-                    self.set_pixel(x + x_offset, y + y_offset, 1)
+    # Removed draw_bitmap method
+    # def draw_bitmap(self, bitmap, x_offset=0, y_offset=0):
+    #     """ビットマップをバッファに描画"""
+    #     height, width = len(bitmap), len(bitmap[0])
+    #     for y in range(height):
+    #         for x in range(width):
+    #             if bitmap[y][x]:
+    #                 self.set_pixel(x + x_offset, y + y_offset, 1)
+
+    def draw_image_on_buffer(self, image: Image.Image, x_offset: int = 0, y_offset: int = 0):
+        """Draws a PIL Image onto the internal buffer at the specified offset."""
+        img_width, img_height = image.size
+        pixels = image.load() # pixels is a PixelAccess object
+
+        for y in range(img_height):
+            for x in range(img_width):
+                pixel_value = pixels[x, y]
+                # Assuming the image is mode '1' (black and white)
+                # pixel_value will be 0 for black, 255 for white (or 1 if already binarized to 0/1)
+                # The set_pixel method expects 1 for on, 0 for off.
+                # If image is '1' mode, non-zero is 'on'.
+                self.set_pixel(x + x_offset, y + y_offset, 1 if pixel_value else 0)
+
     def safe_update_display(self):
         """より安全なディスプレイ更新"""
         for page in range(8):
@@ -96,7 +114,7 @@ class SH1106Display:
                     chunk_data.append(byte_val)
                 
                 self.i2c.writeto(SH1106_ADDR, bytes([SH1106_DATA]) + bytes(chunk_data))
-                time.sleep(0.001)  # 短い待機時間
+                # time.sleep(0.001)  # Removed sleep from chunking loop
             
     def update_display(self):
         """バッファの内容をディスプレイに送信"""
@@ -123,6 +141,7 @@ class SH1106Display:
 
 def get_windows_font(font_name="arial.ttf", size=12):
     """Windowsフォントを読み込み"""
+    global _sh1106_font_cache
     # Windowsフォントディレクトリ
     font_dirs = [
         "C:/Windows/Fonts/",
@@ -148,20 +167,32 @@ def get_windows_font(font_name="arial.ttf", size=12):
         font_file = font_files[font_name.lower()]
     else:
         font_file = font_name
+
+    cache_key = (font_file, size)
+    if cache_key in _sh1106_font_cache:
+        return _sh1106_font_cache[cache_key]
     
     # フォントファイルを検索
     for font_dir in font_dirs:
         font_path = os.path.join(font_dir, font_file)
         if os.path.exists(font_path):
             try:
-                return ImageFont.truetype(font_path, size)
+                font = ImageFont.truetype(font_path, size)
+                _sh1106_font_cache[cache_key] = font
+                return font
             except Exception as e:
                 print(f"フォント読み込みエラー: {e}")
                 continue
     
     # デフォルトフォントを使用
-    print(f"フォント '{font_name}' が見つかりません。デフォルトフォントを使用します。")
-    return ImageFont.load_default()
+    default_cache_key = ('default_font', size)
+    if default_cache_key in _sh1106_font_cache:
+        return _sh1106_font_cache[default_cache_key]
+    
+    print(f"フォント '{font_name}' ('{font_file}') が見つかりません。デフォルトフォントを使用します。")
+    default_font = ImageFont.load_default() # Not ideal to pass size here, but following instructions for key
+    _sh1106_font_cache[default_cache_key] = default_font
+    return default_font
 
 def text_to_bitmap(text, font_name="arial", font_size=12):
     """テキストをビットマップに変換"""
@@ -184,25 +215,18 @@ def text_to_bitmap(text, font_name="arial", font_size=12):
     draw = ImageDraw.Draw(img)
     draw.text((margin, margin), text, font=font, fill=1)
     
-    # ビットマップ配列に変換
-    bitmap = []
-    for y in range(img_height):
-        row = []
-        for x in range(img_width):
-            pixel = img.getpixel((x, y))
-            row.append(pixel)
-        bitmap.append(row)
-    
-    return bitmap
+    # Return the PIL Image object directly
+    return img
 
 def display_text_with_font(display, text, font_name="arial", font_size=12, x=0, y=0):
     """指定されたフォントでテキストを表示"""
-    print(f"Creating bitmap for '{text}' using {font_name} font, size {font_size}")
-    bitmap = text_to_bitmap(text, font_name, font_size)
+    print(f"Creating PIL Image for '{text}' using {font_name} font, size {font_size}")
+    pil_image = text_to_bitmap(text, font_name, font_size)
     
-    print(f"Bitmap size: {len(bitmap[0])}x{len(bitmap)} pixels")
-    display.draw_bitmap(bitmap, x, y)
-    display.safe_update_display()
+    img_width, img_height = pil_image.size
+    print(f"PIL Image size: {img_width}x{img_height} pixels")
+    display.draw_image_on_buffer(pil_image, x, y)
+    display.update_display() # Changed from safe_update_display to update_display
 
 # メイン処理
 if __name__ == "__main__":

@@ -1,153 +1,20 @@
 import time
-import os
 from typing import Tuple, ByteString
 from i2cpy import I2C
-from PIL import Image, ImageDraw, ImageFont
+# Removed os and PIL imports as they are no longer used directly in this file.
+from ssd1306_driver import SSD1306, I2CError, i2c_write, i2c_read, DEFAULT_FONT_PATH, DEFAULT_FONT_SIZE
 
 # 定数
 ADS1115_ADDRESS = 0x48  # ADDRピンがGND
-SSD1306_ADDRESS = 0x3C
-DISPLAY_WIDTH = 128
-DISPLAY_HEIGHT = 64
-DEFAULT_FONT_PATH = "C:\\Windows\\Fonts\\msgothic.ttc"
-DEFAULT_FONT_SIZE = 12
-
-# SSD1306コマンド
-SSD1306_COMMAND = 0x00
-SSD1306_DATA = 0x40
-SSD1306_INIT = [
-    0xAE, 0xD5, 0x80, 0xA8, DISPLAY_HEIGHT - 1, 0xD3, 0x00, 0x40,
-    0x8D, 0x14, 0xA1, 0xC8, 0xDA, 0x12, 0x81, 0xCF, 0xD9, 0xF1,
-    0xDB, 0x40, 0xA4, 0xA6, 0xAF
-]
+# SSD1306 related constants (SSD1306_ADDRESS, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+# DEFAULT_FONT_PATH, DEFAULT_FONT_SIZE, SSD1306_COMMAND, SSD1306_DATA, SSD1306_INIT)
+# are now managed by ssd1306_driver.py and imported if needed (e.g. DEFAULT_FONT values for SSD1306 class).
 
 # ADS1115レジスタ
 ADS1115_REG_CONFIG = 0x01
 ADS1115_REG_CONVERSION = 0x00
 
-class I2CError(Exception):
-    """I2C通信エラーのカスタム例外"""
-    pass
-
-def i2c_write(i2c: I2C, address: int, buffer: ByteString, operation: str = "write") -> None:
-    """I2Cに書き込み"""
-    try:
-        i2c.writeto(address, buffer)
-    except Exception as e:
-        raise I2CError(f"{operation} failed at 0x{address:02x}: {e}")
-
-def i2c_read(i2c: I2C, address: int, register: int, length: int, operation: str = "read") -> bytes:
-    """I2Cから読み込み"""
-    try:
-        i2c.writeto(address, bytes([register & 0xFF]))
-        return i2c.readfrom(address, length)
-    except Exception as e:
-        raise I2CError(f"{operation} failed at 0x{address:02x}, reg 0x{register:02x}: {e}")
-
-class SSD1306:
-    """SSD1306 OLEDディスプレイ制御"""
-    def __init__(self, i2c: I2C, address: int = SSD1306_ADDRESS, width: int = DISPLAY_WIDTH, height: int = DISPLAY_HEIGHT):
-        self.i2c = i2c
-        self.address = address
-        self.width = width
-        self.height = height
-        if not self._init_display():
-            raise RuntimeError("SSD1306 initialization failed")
-
-    def _init_display(self) -> bool:
-        """ディスプレイを初期化"""
-        try:
-            for cmd in SSD1306_INIT:
-                i2c_write(self.i2c, self.address, bytes([SSD1306_COMMAND, cmd]), "SSD1306 init")
-            time.sleep(0.1)
-            return True
-        except I2CError as e:
-            print(f"SSD1306 init error: {e}")
-            return False
-
-    def clear(self) -> bool:
-        """ディスプレイをクリア"""
-        try:
-            commands = [
-                0x20, 0x00,  # 水平アドレッシング
-                0x21, 0, self.width - 1,  # カラム範囲
-                0x22, 0, (self.height // 8) - 1  # ページ範囲
-            ]
-            for cmd in commands:
-                i2c_write(self.i2c, self.address, bytes([SSD1306_COMMAND, cmd]), "SSD1306 clear")
-            chunk_size = 16
-            for _ in range(0, self.width * (self.height // 8), chunk_size):
-                i2c_write(self.i2c, self.address, bytes([SSD1306_DATA]) + bytes([0x00] * chunk_size), "SSD1306 clear data")
-            return True
-        except I2CError as e:
-            print(f"SSD1306 clear error: {e}")
-            return False
-
-    def _image_to_bytes(self, image: Image.Image) -> bytearray:
-        """画像をSSD1306用バイト列に変換"""
-        width, height = image.size
-        pixels = image.load()
-        data = bytearray()
-        for page in range(height // 8):
-            for x in range(width):
-                byte = 0
-                for bit in range(8):
-                    y = page * 8 + bit
-                    if y < height and pixels[x, y]:
-                        byte |= 1 << bit
-                data.append(byte)
-        return data
-
-    def display_text(self, text: str, x: int, y: int, font_path: str = DEFAULT_FONT_PATH, font_size: int = DEFAULT_FONT_SIZE) -> bool:
-        """テキストを表示"""
-        try:
-            font = ImageFont.truetype(font_path, font_size) if os.path.exists(font_path) else ImageFont.load_default()
-            bbox = font.getbbox(text)
-            text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            if text_width <= 0 or text_height <= 0:
-                return True
-
-            img = Image.new('1', (text_width, text_height), 0)
-            draw = ImageDraw.Draw(img)
-            draw.text((-bbox[0], -bbox[1]), text, font=font, fill=1)
-
-            padded_height = ((text_height + 7) // 8) * 8
-            padded_img = Image.new('1', (text_width, padded_height), 0)
-            padded_img.paste(img, (0, 0))
-
-            data = self._image_to_bytes(padded_img)
-            col_start = max(0, x)
-            col_end = min(self.width - 1, x + text_width - 1)
-            page_start = max(0, y // 8)
-            page_end = min((self.height // 8) - 1, (y + padded_height - 1) // 8)
-            if col_start > col_end or page_start > page_end:
-                return True
-
-            commands = [
-                0x20, 0x00, 0x21, col_start, col_end, 0x22, page_start, page_end
-            ]
-            for cmd in commands:
-                i2c_write(self.i2c, self.address, bytes([SSD1306_COMMAND, cmd]), "SSD1306 text setup")
-
-            display_width = col_end - col_start + 1
-            display_pages = page_end - page_start + 1
-            final_data = bytearray()
-            for page in range(display_pages):
-                src_page = page_start + page - (y // 8)
-                if not (0 <= src_page < padded_height // 8):
-                    final_data.extend([0x00] * display_width)
-                    continue
-                offset = src_page * text_width + max(0, col_start - x)
-                end = offset + min(display_width, text_width - max(0, col_start - x))
-                final_data.extend(data[offset:end])
-                if len(final_data) % display_width != 0:
-                    final_data.extend([0x00] * (display_width - (len(final_data) % display_width)))
-
-            i2c_write(self.i2c, self.address, bytes([SSD1306_DATA]) + final_data, "SSD1306 text data")
-            return True
-        except (I2CError, IOError) as e:
-            print(f"Text display error: '{text}' - {e}")
-            return False
+# I2CError, i2c_write, i2c_read, and SSD1306 class are now imported from ssd1306_driver
 
 class ADS1115:
     """ADS1115 16ビットADC制御"""
